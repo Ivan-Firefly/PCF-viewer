@@ -1,6 +1,6 @@
 /**
  * Component Tree UI
- * Displays hierarchical component tree
+ * Displays hierarchical component tree with collapse and box-selection highlights
  */
 
 export class ComponentTree {
@@ -44,7 +44,7 @@ export class ComponentTree {
                     <div class="tree-group-header">
                         <span class="arrow">▼</span>
                         <strong>${type}</strong>
-                        <span class="count">(${items.length})</span>
+                        <span class="count">&nbsp;(${items.length})</span>
                     </div>
                     <div class="tree-group-items">
             `;
@@ -69,7 +69,7 @@ export class ComponentTree {
 
         this.container.innerHTML = html;
 
-        // ✅ Collapse toggle (FIXED)
+        // Collapse toggle
         this.container.querySelectorAll('.tree-group-header').forEach(header => {
             header.addEventListener('click', () => {
                 const group = header.parentElement;
@@ -77,7 +77,7 @@ export class ComponentTree {
             });
         });
 
-        // ✅ Item click handlers (moved OUTSIDE collapse block)
+        // Item click handlers
         this.container.querySelectorAll('.tree-item').forEach(item => {
             item.addEventListener('click', (e) => {
                 const treeIndex = parseInt(e.currentTarget.dataset.treeIndex);
@@ -91,11 +91,12 @@ export class ComponentTree {
     }
 
     /**
-     * Select a tree item
+     * Select a tree item (single click / 3D click)
      */
     selectItem(treeIndex) {
+        // Clear box-selection highlights
         this.container.querySelectorAll('.tree-item').forEach(item => {
-            item.classList.remove('selected');
+            item.classList.remove('selected', 'box-selected');
         });
 
         const item = this.container.querySelector(`[data-tree-index="${treeIndex}"]`);
@@ -112,11 +113,39 @@ export class ComponentTree {
     }
 
     /**
+     * Highlight items from box selection
+     */
+    highlightBoxSelected(selectedComponents) {
+        // Clear previous selection state
+        this.container.querySelectorAll('.tree-item').forEach(item => {
+            item.classList.remove('selected', 'box-selected');
+        });
+
+        if (!selectedComponents || selectedComponents.length === 0) return;
+
+        // Build a set of (sourceFile, index) pairs for fast lookup
+        const keySet = new Set(selectedComponents.map(c => `${c.sourceFile}::${c.index}`));
+
+        this.components.forEach((comp, treeIndex) => {
+            const key = `${comp.sourceFile}::${comp.index}`;
+            if (keySet.has(key)) {
+                const item = this.container.querySelector(`[data-tree-index="${treeIndex}"]`);
+                if (item) {
+                    item.classList.add('box-selected');
+                    // Ensure parent group is expanded
+                    const group = item.closest('.tree-group');
+                    if (group) group.classList.remove('collapsed');
+                }
+            }
+        });
+    }
+
+    /**
      * Clear all selections in the tree
      */
     clearSelection() {
         this.container.querySelectorAll('.tree-item').forEach(item => {
-            item.classList.remove('selected');
+            item.classList.remove('selected', 'box-selected');
         });
     }
 
