@@ -67,6 +67,12 @@ class App {
             }
         };
 
+        // Box-selection callback: receives array of selected components
+        this.scene.onBoxSelectionComplete = (selectedComponents) => {
+            this.propertiesPanel.updateMultiSelection(selectedComponents);
+            this.componentTree.highlightBoxSelected(selectedComponents);
+        };
+
         this.scene.onFilesChanged = (files) => {
             this.fileManager.update(files);
             this.updateComponentTree();
@@ -99,6 +105,25 @@ class App {
 
         document.getElementById('toggleGrid').addEventListener('click', () => {
             this.scene.toggleGrid();
+        });
+
+        // Box-select toggle button
+        const boxSelectBtn = document.getElementById('toggleBoxSelect');
+        boxSelectBtn.addEventListener('click', () => {
+            const active = this.scene.toggleBoxSelectMode();
+            if (active) {
+                boxSelectBtn.classList.add('active');
+            } else {
+                boxSelectBtn.classList.remove('active');
+            }
+        });
+
+        // ===== Collapsible sidebar sections =====
+        document.querySelectorAll('.section-header').forEach(header => {
+            header.addEventListener('click', () => {
+                const section = header.closest('.sidebar-section');
+                section.classList.toggle('collapsed');
+            });
         });
     }
 
