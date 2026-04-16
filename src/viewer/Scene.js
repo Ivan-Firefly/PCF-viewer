@@ -1,6 +1,7 @@
 /**
  * Three.js Scene Manager
  * Handles 3D scene setup, rendering, and component visualization
+ * Includes box-selection (rubber-band) mode
  */
 
 import * as THREE from 'three';
@@ -28,7 +29,21 @@ export class Scene {
         this.grid = null;
         this.axes = null;
         this.onComponentSelected = null;
-        this.onFilesChanged = null; // Callback for file list updates
+        this.onFilesChanged = null;
+        this.onBoxSelectionComplete = null;
+
+        // Box selection state
+        this.boxSelectMode = false;
+        this.boxSelectActive = false;
+        this.boxSelectStart = { x: 0, y: 0 };
+        this.boxSelectEnd = { x: 0, y: 0 };
+        this._boxSelectEl = null;
+        this._boxSelectedObjects = [];
+
+        // Bound event handlers (for removal)
+        this._onMouseDown = this._handleMouseDown.bind(this);
+        this._onMouseMoveSel = this._handleMouseMoveSel.bind(this);
+        this._onMouseUp = this._handleMouseUp.bind(this);
 
         this.init();
     }
@@ -40,11 +55,11 @@ export class Scene {
         // Scene
         this.scene = new THREE.Scene();
         this.scene.background = new THREE.Color(0x87ceeb); // Light blue
-        this.scene.fog = new THREE.Fog(0x87ceeb, 1000000, 500000000); // Very far fog by default
+        this.scene.fog = new THREE.Fog(0x87ceeb, 1000000, 500000000);
 
         // Camera
         const aspect = this.container.clientWidth / this.container.clientHeight;
-        this.camera = new THREE.PerspectiveCamera(60, aspect, 100, 1000000000); // 1e9 far plane
+        this.camera = new THREE.PerspectiveCamera(60, aspect, 100, 1000000000);
         this.camera.up.set(0, 0, 1); // Z is up
         this.camera.position.set(2000, -2000, 2000);
         this.camera.lookAt(0, 0, 0);
@@ -66,8 +81,7 @@ export class Scene {
         this.controls.dampingFactor = 0.05;
         this.controls.screenSpacePanning = true;
         this.controls.minDistance = 100;
-        this.controls.maxDistance = 2000000000; // 2e9
-        // Note: OrbitControls naturally uses camera.up
+        this.controls.maxDistance = 2000000000;
 
         // Lighting
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
@@ -84,7 +98,7 @@ export class Scene {
 
         // Grid (lying on XY plane)
         this.grid = new THREE.GridHelper(10000, 100, 0x3b82f6, 0x777777);
-        this.grid.rotateX(Math.PI / 2); // Rotate to XY plane
+        this.grid.rotateX(Math.PI / 2);
         this.grid.material.opacity = 0.1;
         this.grid.material.transparent = true;
         this.scene.add(this.grid);
@@ -96,7 +110,10 @@ export class Scene {
         // Add piping group
         this.scene.add(this.pipingGroup);
 
-        // Event listeners
+        // Selection box DOM element
+        this._boxSelectEl = document.getElementById('selectionBox');
+
+        // Standard event listeners
         window.addEventListener('resize', () => this.onWindowResize());
         this.renderer.domElement.addEventListener('click', (e) => this.onMouseClick(e));
         this.renderer.domElement.addEventListener('mousemove', (e) => this.onMouseMove(e));
@@ -104,6 +121,190 @@ export class Scene {
         // Start animation loop
         this.animate();
     }
+
+    // ===================================================================
+    // BOX SELECTION
+    // ===================================================================
+
+    /**
+     * Toggle box-select mode on/off.
+     * Returns true if now active, false if deactivated.
+     */
+    toggleBoxSelectMode() {
+        this.boxSelectMode = !this.boxSelectMode;
+
+        if (this.boxSelectMode) {
+            // Disable orbit while in box-select mode
+            this.controls.enabled = false;
+            this.renderer.domElement.addEventListener('mousedown', this._onMouseDown);
+            this.renderer.domElement.addEventListener('mousemove', this._onMouseMoveSel);
+            this.renderer.domElement.addEventListener('mouseup', this._onMouseUp);
+            this.renderer.domElement.style.cursor = 'crosshair';
+        } else {
+            this._exitBoxSelectMode();
+        }
+
+        return this.boxSelectMode;
+    }
+
+    _exitBoxSelectMode() {
+        this.boxSelectMode = false;
+        this.boxSelectActive = false;
+        this.controls.enabled = true;
+        this.renderer.domElement.removeEventListener('mousedown', this._onMouseDown);
+        this.renderer.domElement.removeEventListener('mousemove', this._onMouseMoveSel);
+        this.renderer.domElement.removeEventListener('mouseup', this._onMouseUp);
+        this.renderer.domElement.style.cursor = 'default';
+        if (this._boxSelectEl) this._boxSelectEl.classList.add('hidden');
+    }
+
+    _handleMouseDown(e) {
+        if (e.button !== 0) return; // left button only
+        this.boxSelectActive = true;
+        const rect = this.container.getBoundingClientRect();
+        this.boxSelectStart = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+        this.boxSelectEnd = { ...this.boxSelectStart };
+        this._updateSelectionBoxDOM();
+    }
+
+    _handleMouseMoveSel(e) {
+        if (!this.boxSelectActive) return;
+        const rect = this.container.getBoundingClientRect();
+        this.boxSelectEnd = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+        this._updateSelectionBoxDOM();
+    }
+
+    _handleMouseUp(e) {
+        if (!this.boxSelectActive) return;
+        this.boxSelectActive = false;
+
+        const rect = this.container.getBoundingClientRect();
+        this.boxSelectEnd = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+
+        if (this._boxSelectEl) this._boxSelectEl.classList.add('hidden');
+
+        // Perform the selection
+        this._performBoxSelection();
+    }
+
+    _updateSelectionBoxDOM() {
+        if (!this._boxSelectEl) return;
+        const x = Math.min(this.boxSelectStart.x, this.boxSelectEnd.x);
+        const y = Math.min(this.boxSelectStart.y, this.boxSelectEnd.y);
+        const w = Math.abs(this.boxSelectEnd.x - this.boxSelectStart.x);
+        const h = Math.abs(this.boxSelectEnd.y - this.boxSelectStart.y);
+
+        this._boxSelectEl.style.left = x + 'px';
+        this._boxSelectEl.style.top = y + 'px';
+        this._boxSelectEl.style.width = w + 'px';
+        this._boxSelectEl.style.height = h + 'px';
+        this._boxSelectEl.classList.remove('hidden');
+    }
+
+    /**
+     * Find all meshes whose projected screen position falls inside the selection box.
+     * Uses bounding sphere center projected to screen.
+     */
+    _performBoxSelection() {
+        const rect = this.container.getBoundingClientRect();
+        const cw = rect.width;
+        const ch = rect.height;
+
+        const x0 = Math.min(this.boxSelectStart.x, this.boxSelectEnd.x);
+        const x1 = Math.max(this.boxSelectStart.x, this.boxSelectEnd.x);
+        const y0 = Math.min(this.boxSelectStart.y, this.boxSelectEnd.y);
+        const y1 = Math.max(this.boxSelectStart.y, this.boxSelectEnd.y);
+
+        // Minimum box size to avoid accidental zero-area click
+        if ((x1 - x0) < 3 && (y1 - y0) < 3) return;
+
+        // Normalize box to NDC range [-1, 1]
+        const ndcX0 = (x0 / cw) * 2 - 1;
+        const ndcX1 = (x1 / cw) * 2 - 1;
+        const ndcY0 = -((y1 / ch) * 2 - 1); // flip Y
+        const ndcY1 = -((y0 / ch) * 2 - 1);
+
+        const frustum = new THREE.Frustum();
+        const projScreenMatrix = new THREE.Matrix4();
+        projScreenMatrix.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
+
+        // Build a selection frustum from the box NDC corners
+        // We use a simpler approach: project each mesh center to screen space
+        const selectedComponents = [];
+        const seenKeys = new Set();
+
+        // Collect all top-level mesh objects
+        this.pipingGroup.traverse((obj) => {
+            if (!obj.isMesh && !obj.isGroup) return;
+
+            // Only process direct component objects (have componentIndex)
+            if (obj.userData.componentIndex === undefined) return;
+
+            // Get world position of object center
+            const worldPos = new THREE.Vector3();
+            obj.getWorldPosition(worldPos);
+
+            // Project to NDC
+            const ndc = worldPos.clone().project(this.camera);
+
+            // Check if inside box
+            if (ndc.x >= ndcX0 && ndc.x <= ndcX1 && ndc.y >= ndcY0 && ndc.y <= ndcY1) {
+                const compIdx = obj.userData.componentIndex;
+                const fname = obj.userData.filename;
+                const key = `${fname}::${compIdx}`;
+
+                if (!seenKeys.has(key)) {
+                    seenKeys.add(key);
+
+                    // Get the actual component data
+                    const fileData = this.fileGroups.get(fname);
+                    if (fileData && fileData.data.components[compIdx]) {
+                        const comp = fileData.data.components[compIdx];
+                        selectedComponents.push({
+                            ...comp,
+                            index: compIdx,
+                            sourceFile: fname
+                        });
+                    }
+                }
+            }
+        });
+
+        // Highlight selected objects in 3D
+        this._highlightBoxSelection(seenKeys);
+
+        // Notify callback
+        if (this.onBoxSelectionComplete) {
+            this.onBoxSelectionComplete(selectedComponents);
+        }
+    }
+
+    _highlightBoxSelection(keySet) {
+        // Clear all highlights first
+        this.pipingGroup.traverse((obj) => {
+            if (obj.isMesh && obj.material) {
+                obj.material.emissive = new THREE.Color(0x000000);
+                obj.material.emissiveIntensity = 0;
+            }
+        });
+
+        // Apply selection highlight
+        this.pipingGroup.traverse((obj) => {
+            if (!obj.isMesh) return;
+            const compIdx = obj.userData.componentIndex;
+            const fname = obj.userData.filename;
+            if (compIdx === undefined) return;
+            const key = `${fname}::${compIdx}`;
+            if (keySet.has(key)) {
+                obj.material.emissive = new THREE.Color(0x0ea5e9);
+                obj.material.emissiveIntensity = 0.5;
+            }
+        });
+    }
+
+    // ===================================================================
+    // LOAD PIPING DATA
+    // ===================================================================
 
     /**
      * Load piping data for a single file
@@ -115,14 +316,11 @@ export class Scene {
 
         console.log('Loading piping data:', data.components.length, 'components from', filename);
 
-        // Create a group for this file
         const fileGroup = new THREE.Group();
         fileGroup.name = filename;
 
-        // Generate color for this file
         const fileColor = this.generateFileColor(this.fileGroups.size);
 
-        // Create geometry for each component
         let successCount = 0;
         data.components.forEach((component, index) => {
             let mesh = null;
@@ -153,7 +351,6 @@ export class Scene {
                         break;
 
                     case 'VALVE':
-                        // Create background pipe for the valve segment
                         if (component.endPoints.length >= 2) {
                             const pipe = PipeGeometry.create(
                                 component.endPoints[0].position,
@@ -174,7 +371,6 @@ export class Scene {
                         break;
 
                     case 'FLANGE':
-                        // Draw flange and ensure pipe is shown
                         if (component.endPoints.length >= 2) {
                             const pipe = PipeGeometry.create(
                                 component.endPoints[0].position,
@@ -189,7 +385,6 @@ export class Scene {
                         break;
 
                     case 'SUPPORT':
-                        // Draw shoe support and ensure pipe is shown
                         if (component.endPoints.length >= 2) {
                             const pipe = PipeGeometry.create(
                                 component.endPoints[0].position,
@@ -204,7 +399,6 @@ export class Scene {
                         break;
 
                     case 'GASKET':
-                        // Gaskets just show the pipe
                         if (component.endPoints.length >= 2) {
                             mesh = PipeGeometry.create(
                                 component.endPoints[0].position,
@@ -217,7 +411,6 @@ export class Scene {
                         break;
 
                     case 'BOLT':
-                        // Skip or show marker
                         break;
 
                     default:
@@ -228,7 +421,6 @@ export class Scene {
                 console.warn(`Error creating geometry for ${component.type}:`, err);
             }
 
-            // Fallback for failed specialized geometry or components with at least one point
             if (!mesh && component.endPoints && component.endPoints.length > 0) {
                 mesh = this.createMarker(component, fileColor);
             }
@@ -237,12 +429,20 @@ export class Scene {
                 mesh.userData.componentIndex = index;
                 mesh.userData.component = component;
                 mesh.userData.filename = filename;
+                // Propagate userData to children (Groups)
+                if (mesh.isGroup) {
+                    mesh.traverse(child => {
+                        if (child !== mesh) {
+                            child.userData.componentIndex = index;
+                            child.userData.filename = filename;
+                        }
+                    });
+                }
                 fileGroup.add(mesh);
                 successCount++;
             }
         });
 
-        // Store file metadata
         this.fileGroups.set(filename, {
             group: fileGroup,
             data: data,
@@ -250,35 +450,22 @@ export class Scene {
             color: fileColor
         });
 
-        // Add to scene
         this.pipingGroup.add(fileGroup);
 
         console.log(`Successfully created ${successCount} meshes for ${filename}`);
-        console.log('File group children:', fileGroup.children.length);
-        console.log('Piping group children:', this.pipingGroup.children.length);
 
-        // Log first component for debugging
-        if (fileGroup.children.length > 0) {
-            const firstMesh = fileGroup.children[0];
-            console.log('First mesh position:', firstMesh.position);
-            console.log('First mesh userData:', firstMesh.userData);
-        }
-
-        // Notify callback
         if (this.onFilesChanged) {
             this.onFilesChanged(Array.from(this.fileGroups.entries()));
         }
 
-        // Fit camera to view all components
         this.fitCameraToSelection();
     }
 
     /**
      * Generate a distinct color for each file
-     * User requested green for components
      */
     generateFileColor(index) {
-        return 0x4ade80; // Vibrant Bright Green as requested
+        return 0x4ade80; // Vibrant Bright Green
     }
 
     /**
@@ -302,10 +489,8 @@ export class Scene {
     removeFile(filename) {
         const fileData = this.fileGroups.get(filename);
         if (fileData) {
-            // Remove from scene
             this.pipingGroup.remove(fileData.group);
 
-            // Dispose of geometries and materials
             fileData.group.traverse((child) => {
                 if (child.geometry) child.geometry.dispose();
                 if (child.material) {
@@ -317,7 +502,6 @@ export class Scene {
                 }
             });
 
-            // Remove from map
             this.fileGroups.delete(filename);
 
             if (this.onFilesChanged) {
@@ -384,19 +568,10 @@ export class Scene {
         const size = box.getSize(new THREE.Vector3());
         const maxDim = Math.max(size.x, size.y, size.z);
 
-        console.log('Bounding box:', {
-            min: box.min,
-            max: box.max,
-            center: center,
-            size: size,
-            maxDim: maxDim
-        });
-
         const fov = this.camera.fov * (Math.PI / 180);
         const cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
-        const distance = cameraZ * 1.2; // Tighter zoom as requested (was 1.5)
+        const distance = cameraZ * 1.2;
 
-        // Dynamic clipping plane adjustment for huge models
         if (distance * 2 > this.camera.far) {
             this.camera.far = distance * 5;
             this.camera.updateProjectionMatrix();
@@ -406,7 +581,6 @@ export class Scene {
             }
         }
 
-        // Position camera in isometric view
         const direction = new THREE.Vector3(1, -1, 1).normalize();
         this.camera.position.copy(center).add(direction.multiplyScalar(distance));
         this.camera.lookAt(center);
@@ -452,9 +626,10 @@ export class Scene {
     }
 
     /**
-     * Mouse click handler
+     * Mouse click handler (only fires outside box-select mode)
      */
     onMouseClick(event) {
+        if (this.boxSelectMode) return; // handled by box-select
         const rect = this.renderer.domElement.getBoundingClientRect();
         this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
         this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -473,6 +648,7 @@ export class Scene {
      * Mouse move handler (for hover effects)
      */
     onMouseMove(event) {
+        if (this.boxSelectMode) return;
         const rect = this.renderer.domElement.getBoundingClientRect();
         this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
         this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -491,12 +667,8 @@ export class Scene {
      * Select an object
      */
     selectObject(object) {
-        // Deselect previous
         this.deselectObject();
 
-        // Find the component-level object
-        // Components are usually the direct children of a fileGroup, 
-        // but some might be groups themselves. We look for the one with component data.
         let targetObject = object;
         while (targetObject.parent &&
             targetObject.parent !== this.pipingGroup &&
@@ -507,7 +679,6 @@ export class Scene {
 
         this.selectedObject = targetObject;
 
-        // Highlight selected object (Red highlight as requested)
         this.selectedObject.traverse((child) => {
             if (child.isMesh && child.material) {
                 if (child.userData.originalColor === undefined) {
@@ -518,7 +689,6 @@ export class Scene {
             }
         });
 
-        // Notify callback with full metadata for syncing
         if (this.onComponentSelected && this.selectedObject.userData) {
             this.onComponentSelected(this.selectedObject.userData);
         }
