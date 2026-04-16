@@ -338,6 +338,52 @@ body {
     background: rgba(59, 130, 246, 0.4);
 }
 
+.tree-group {
+    margin-bottom: 8px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.tree-group-header {
+    padding: 8px 10px;
+    background: #f5f5f5;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    user-select: none;
+}
+
+.tree-group-header:hover {
+    background: #eaeaea;
+}
+
+.tree-group-items {
+    padding: 6px 10px;
+    transition: all 0.2s ease;
+}
+
+.tree-item {
+    padding: 4px 0;
+    font-size: 14px;
+}
+
+/* 🔽 COLLAPSE BEHAVIOR */
+.tree-group.collapsed .tree-group-items {
+    display: none;
+}
+
+/* 🔽 Arrow animation */
+.arrow {
+    display: inline-block;
+    transition: transform 0.2s ease;
+}
+
+.tree-group.collapsed .arrow {
+    transform: rotate(-90deg);
+}
+
 /* ===== RESPONSIVE ===== */
 @media (max-width: 768px) {
     .sidebar {
