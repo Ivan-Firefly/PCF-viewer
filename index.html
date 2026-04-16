@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PCF/IDF Viewer - 3D Piping Viewer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+  <div id="app">
+    <!-- Main Container -->
+    <div class="container">
+      <!-- Sidebar -->
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <h1>PCF/IDF Viewer</h1>
+          <p class="subtitle">3D Piping Visualization</p>
+        </div>
+
+        <!-- File Upload Section -->
+        <div class="upload-section">
+          <div id="dropzone" class="dropzone">
+            <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+            </svg>
+            <p class="upload-text">Drop PCF/IDF file here</p>
+            <p class="upload-subtext">or click to browse</p>
+            <input type="file" id="fileInput" accept=".pcf,.idf" multiple hidden>
+          </div>
+        </div>
+
+        <!-- Loaded Files Section -->
+        <div class="files-section">
+          <h3>Loaded Files</h3>
+          <div id="fileManager" class="file-manager">
+            <p class="empty-state">No files loaded</p>
+          </div>
+        </div>
+
+        <!-- Component Tree -->
+        <div class="tree-section">
+          <h3>Components</h3>
+          <div id="componentTree" class="component-tree">
+            <p class="empty-state">Load a file to view components</p>
+          </div>
+        </div>
+
+        <!-- Properties Panel -->
+        <div class="properties-section">
+          <h3>Properties</h3>
+          <div id="propertiesPanel" class="properties-panel">
+            <p class="empty-state">Select a component to view details</p>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Main Viewport -->
+      <main class="viewport">
+        <div class="toolbar">
+          <button id="viewIso" class="toolbar-btn active" title="Isometric View">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M7 21h10m-5-18v18m-7-9l7-4m7 4l-7-4" />
+            </svg>
+          </button>
+          <button id="viewTop" class="toolbar-btn" title="Top View">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <circle cx="12" cy="12" r="10" stroke-width="2" />
+              <circle cx="12" cy="12" r="3" fill="currentColor" />
+            </svg>
+          </button>
+          <button id="viewFront" class="toolbar-btn" title="Front View">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <rect x="4" y="4" width="16" height="16" stroke-width="2" />
+            </svg>
+          </button>
+          <button id="viewSide" class="toolbar-btn" title="Side View">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16" />
+            </svg>
+          </button>
+          <div class="toolbar-divider"></div>
+          <button id="fitView" class="toolbar-btn" title="Fit to View">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+            </svg>
+          </button>
+          <button id="toggleGrid" class="toolbar-btn" title="Toggle Grid">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+        </div>
+        <div id="canvas-container" class="canvas-container"></div>
+        <div id="loadingOverlay" class="loading-overlay hidden">
+          <div class="spinner"></div>
+          <p>Loading model...</p>
+        </div>
+      </main>
+    </div>
+  </div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+
+</html>
