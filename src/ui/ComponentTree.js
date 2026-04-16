@@ -40,38 +40,49 @@ export class ComponentTree {
 
         for (const [type, items] of Object.entries(grouped)) {
             html += `
-        <div class="tree-group">
-          <div class="tree-group-header">
-            <strong>${type}</strong> <span class="count">(${items.length})</span>
-          </div>
-          <div class="tree-group-items">
-      `;
+                <div class="tree-group">
+                    <div class="tree-group-header">
+                        <span class="arrow">▼</span>
+                        <strong>${type}</strong>
+                        <span class="count">(${items.length})</span>
+                    </div>
+                    <div class="tree-group-items">
+            `;
 
             items.forEach(item => {
                 const icon = this.getComponentIcon(type);
                 const label = item.attributes?.itemCode || `${type}-${item.index + 1}`;
 
                 html += `
-          <div class="tree-item" data-tree-index="${item.treeIndex}">
-            ${icon}
-            <span>${label}</span>
-          </div>
-        `;
+                    <div class="tree-item" data-tree-index="${item.treeIndex}">
+                        ${icon}
+                        <span>${label}</span>
+                    </div>
+                `;
             });
 
             html += `
-          </div>
-        </div>
-      `;
+                    </div>
+                </div>
+            `;
         }
 
         this.container.innerHTML = html;
 
-        // Add click handlers
+        // ✅ Collapse toggle (FIXED)
+        this.container.querySelectorAll('.tree-group-header').forEach(header => {
+            header.addEventListener('click', () => {
+                const group = header.parentElement;
+                group.classList.toggle('collapsed');
+            });
+        });
+
+        // ✅ Item click handlers (moved OUTSIDE collapse block)
         this.container.querySelectorAll('.tree-item').forEach(item => {
             item.addEventListener('click', (e) => {
                 const treeIndex = parseInt(e.currentTarget.dataset.treeIndex);
                 this.selectItem(treeIndex);
+
                 if (this.onComponentClicked) {
                     this.onComponentClicked(this.components[treeIndex], treeIndex);
                 }
@@ -83,17 +94,14 @@ export class ComponentTree {
      * Select a tree item
      */
     selectItem(treeIndex) {
-        // Remove previous selection
         this.container.querySelectorAll('.tree-item').forEach(item => {
             item.classList.remove('selected');
         });
 
-        // Add selection
         const item = this.container.querySelector(`[data-tree-index="${treeIndex}"]`);
         if (item) {
             item.classList.add('selected');
 
-            // Scroll into view if not visible
             const containerRect = this.container.getBoundingClientRect();
             const itemRect = item.getBoundingClientRect();
 
